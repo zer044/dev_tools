@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
+  <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.2/dist/umd/popper.min.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.2/dist/css/bootstrap.min.css" rel="stylesheet"
+    integrity="sha384-Zenh87qX5JnK2Jl0vWa8Ck2rdkQ2Bzep5IDxbcnCeuOxjzrPF/et3URy9Bv1WTRi" crossorigin="anonymous">
+  <link href="https://gitcdn.github.io/bootstrap-toggle/2.2.2/css/bootstrap-toggle.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+  <div class="container-fluid">
+    <h1>GMU Box Support page</h1>
+    <div class="row">
+      <div class="col-lg">
+        <img class="img-fluid" class="rounded" src="" alt="livestream" id="livestream">
+        <div class="container-fluid">
+          <!-- make a box that takes half the page -->
+          <div class="col-lg-6">
+            <form>
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="objectdata">
+                <label class="form-check-label" for="objectdata">Enable Object data update</label>
+              </div>
+              <div class="form-group">
+                <label for="HistoryText">Object Data History</label>
+                <textarea class="form-control terminal" id="HistoryText"></textarea>
+              </div>
+            </form>
+            <br>
+            <h3>Dectection Configuration</h3>
+            <div class="row-cols-1">
+              <div class="d-flex align-items-center">
+                <div class="dropdown">
+                  <button class="btn btn-secondary dropdown-toggle" type="button" id="dropdownMenuButton"
+                    data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                    Taxonomy Classes
+                  </button>
+                  <div class="dropdown-menu" aria-labelledby="dropdownMenuButton" id="class_lists">
+                  </div>
+                </div>
+                <div class="ml-3">
+                  <input type="checkbox" data-toggle="toggle" data-on="Include" data-off="Exclude" id="filter-toggle">
+                  <!-- Add Historyfilter tickable checkbox -->
+                  <input type="checkbox" id="historyfilter-toggle"> History Filter </input>
+                </div>
+              </div>
+              <button type="button" class="btn btn-secondary" id="Apply-Config">Apply Config</button>
+            </div>
+          </div>
+          
+        </div>
+      </div>
+      <div class="col-lg">
+        <div class="overflow-auto">
+          <div class="flex-row">
+            <div class="col-sm-4">
+              <div class="input-group mb-3">
+                <div class="input-group-prepend">
+                  <span class="input-group-text" id="boxip-label">Box IP: </span>
+                </div>
+                <input type="text" minlength="7" maxlength="15" size="15"
+                  pattern="^((\d{1,2}|1\d\d|2[0-4]\d|25[0-5])\.){3}(\d{1,2}|1\d\d|2[0-4]\d|25[0-5])$"
+                  class="form-control" id="boxip" aria-describedby="basic-addon3" value="10.9.0.11">
+              </div>
+            </div>
+            <div class="btn-group" role="group" aria-label="update_save">
+              <button type="button" class="btn btn-secondary" id="update" onclick="update_clicked()">Update</button>
+              <button type="button" class="btn btn-secondary" id="set" onclick="setButton_clicked()">Set</button>
+              <button type="button" class="btn btn-secondary" id="save" onclick="saveButtonClicked()">Save</button>
+            </div>
+            <!--Robot Stats section-->
+            <h3>Robot Stats</h3>
+            <div class="col-sm-4">
+              <div class="input-group mb-3">
+                <div class="input-group-prepend">
+                  <span class="input-group-text" id="beltspeed-label">Belt Speed: </span>
+                </div>
+                <input type="number" class="form-control" id="beltspeed" aria-describedby="basic-addon3">
+              </div>
+
+              <div class="input-group mb-3">
+                <div class="input-group-prepend">
+                  <span class="input-group-text" id="beltstatus-label">Belt Status: </span>
+                </div>
+                <input type="text" class="form-control" id="beltstatus" aria-describedby="basic-addon3">
+              </div>
+            </div>
+          </div>
+          <!-- Camera Settings Section-->
+          <div class="flex-row">
+            <!-- Singleshot section-->
+            <h3>Single Shot</h3>
+            <button type="button" class="btn btn-secondary btn-lg" onclick="onclickSingleshot()"
+              id="triggerSingleShot_button">Trigger Single Shot</button>
+            <div class="row-cols-auto">
+              <div class="col-sm-5">
+                <div class="input-group-prepend">
+                  <div class="input-group mb-3">
+                    <input type="text" class="form-control" placeholder="" aria-label="" aria-describedby="basic-addon1"
+                      id="singleshot_state_text" disabled>
+                    <button class="btn btn-outline-secondary" type="button" id="singleshot_state"
+                      onclick="updateSingleshot()">Query log</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <h3>Camera Settings</h3>
+            <form>
+              <div class="form-group">
+                <label for="ParamData">Parameters</label>
+                <textarea class="form-control" id="ParamData" spellcheck="false"></textarea>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
+
+    <script src="https://code.jquery.com/jquery-3.2.1.slim.min.js"
+      integrity="sha384-KJ3o2DKtIkvYIK3UENzmM7KCkRr/rE9/Qpg6aAZGJwFDMVNA/GpGFF93hXpG5KkN"
+      crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/popper.js@1.12.9/dist/umd/popper.min.js"
+      integrity="sha384-ApNbgh9B+Y1QKtv3Rn7W3mgPxhU9K/ScQsAP7hUibX39j7fakFPskvXusvfa0b4Q"
+      crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.0.0/dist/js/bootstrap.min.js"
+      integrity="sha384-JZR6Spejh4U02d8jOt6vLEHfe/JQGiRRSQQxSfFWpi1MquVdAyjUar5+76PVCmYl"
+      crossorigin="anonymous"></script>
+    <script src="https://gitcdn.github.io/bootstrap-toggle/2.2.2/js/bootstrap-toggle.min.js"></script>
+    <!-- custom script -->
+    <script src="js/main.js"></script>
+</body>
+
+</html>
