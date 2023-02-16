@@ -257,14 +257,34 @@ document.getElementById("dropdownMenuButton").addEventListener("click", function
   }
 });
 
-document.getElementById("Apply-Config").addEventListener("click", function() {
+document.getElementById("Apply-Config").addEventListener("click", function () {
   // Check which items are checked
   var checkboxes = document.querySelectorAll("#class_lists input[type='checkbox']");
   var checkedItems = [];
   for (var i = 0; i < checkboxes.length; i++) {
-  if (checkboxes[i].checked) {
-  checkedItems.push(checkboxes[i].value);
+    if (checkboxes[i].checked) {
+      checkedItems.push(checkboxes[i].value);
+    }
   }
+  //console.log("Checked items: ", checkedItems);
+
+  //build json object
+  //{ "exclude": [ "graphic_paper" ], "s": "BIG", "turn-on-when-moving": 1, "history-filter": true }
+  // check historyfilter-toggle state include for true, exclude for false
+  var filter_type = document.getElementById("filter-toggle").checked ? "include" : "exclude";
+  var enable_history_filter = document.getElementById("historyfilter-toggle").checked ? true : false;
+  var json_body = { [filter_type]: checkedItems, s: "BIG", "turn-on-when-moving": 1, "history-filter": enable_history_filter };
+
+  console.log("json_body: ", json_body);
+
+  url = base_url + "/robot/config";
+  var xhr = new XMLHttpRequest();
+  xhr.open("POST", url, true);
+  xhr.setRequestHeader("Content-Type", "application/json");
+  var body = JSON.stringify(json_body);
+  xhr.send(body);
+  xhr.onload = () => {
+    var data = xhr.responseText;
+    console.log("response: ", data);
   }
-  console.log("Checked items: ", checkedItems);
-  });
+});
