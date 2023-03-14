@@ -93,6 +93,22 @@ var interval = setInterval(function() {
   }
 }, 1000);
 
+var speedInterval = setInterval(function() {
+  var is_checked = document.getElementById("speedupdate").checked;
+  if (is_checked) {
+    var beltspeed = document.getElementById("beltspeed").value;
+    if (!isNaN(beltspeed)) { // check if beltspeed is a valid number
+      var speed = beltspeed;
+      var base_url = "http://" + document.getElementById("boxip").value + ":8080";
+      var url = base_url + "/robot/set-speed";
+      var xhr = new XMLHttpRequest();
+      xhr.open("POST", url, true);
+      xhr.setRequestHeader('Content-Type', 'application/json');
+      xhr.send(JSON.stringify({v: speed}));
+    }
+  }
+}, 1000);
+
 function setButton_clicked () {
   base_url = "http://" + document.getElementById("boxip").value + ":8080";
   var url = base_url + "/set_param";
