@@ -2,6 +2,9 @@ var param_json
 var global_class_names
 var base_url
 
+var excluded_classes = [];
+var included_classes = [];
+
 function update_clicked() {
 
   var ip = document.getElementById("boxip").value;
@@ -77,7 +80,49 @@ function update_clicked() {
       document.getElementById("class_lists").appendChild(newLine);
     }
   }
+
+  update_filter_list();
 }
+
+function update_filter_list() {
+  enpoint = "/get_current_params/";
+  param_name_exclude = "app.4M6K7BW.robotapi.FilterExcludeList";
+  param_name_include = "app.4M6K7BW.robotapi.FilterIncludeList";
+
+  url = base_url + enpoint + param_name_exclude;
+  console.log("url: ", url);
+  xhr_exclude = new XMLHttpRequest();
+  xhr_exclude.open("GET", url, true);
+  xhr_exclude.onload = () => {
+    // What url did we use
+    console.log("url: ", xhr_exclude.responseURL);
+    // print result was the get successful?
+    console.log(xhr_exclude.status + " " + xhr_exclude.statusText)
+    var data = JSON.parse(xhr_exclude.response);
+    console.log("response: " + xhr_exclude.response);
+    // print json data in data
+    console.log("data: ", data[param_name_exclude]);
+    excluded_classes = data[param_name_exclude];
+    console.log("excluded_classes: ", excluded_classes);
+  }
+
+  xhr_exclude.send();
+
+  url = base_url + enpoint + param_name_include;
+  xhr_include = new XMLHttpRequest();
+  xhr_include.open("GET", url, true);
+  xhr_include.onload = () => {
+    // print result was the get successful?
+    console.log(xhr_include.status + " " + xhr_include.statusText)
+
+    var data = JSON.parse(xhr.response);
+    included_classes = data["param_name_include"];
+    console.log("included_classes: ", included_classes);
+  }
+
+  xhr_include.send();
+}
+
 
 window.addEventListener('load', function() {
   // Get the value of the 'box_ip_address' cookie
@@ -249,6 +294,20 @@ $('.dropdown-menu').on('click', function (e) {
 });
 
 document.getElementById("dropdownMenuButton").addEventListener("click", function () {
+
+  update_filter_list();
+
+  setTimeout(function() {
+  }, 200);
+
+
+  // Check if id="filter-toggle" is set to exclude (false) or include (true)
+  var filter_toggle_value = document.getElementById("filter-toggle").checked ? true : false;
+  var current_filter_classes = excluded_classes;
+  if (filter_toggle_value == true) {
+    current_filter_classes = included_classes;
+  }
+
   //If global_class_names is empty update it from the server
   if (global_class_names) {
     base_url = "http://" + document.getElementById("boxip").value + ":8080";
@@ -263,8 +322,8 @@ document.getElementById("dropdownMenuButton").addEventListener("click", function
     xhr_class_names.send();
   }
 
-    //Populate the dropdown
-  //Clear the dropdown
+  // Populate the dropdown
+  // Clear the dropdown
   var dropdown = document.getElementById("class_lists");
   while (dropdown.firstChild) {
     dropdown.removeChild(dropdown.firstChild);
@@ -281,9 +340,16 @@ document.getElementById("dropdownMenuButton").addEventListener("click", function
       label.innerHTML = global_class_names[i];
       document.getElementById("class_lists").appendChild(checkbox);
       document.getElementById("class_lists").appendChild(label);
-            // add a new line
+      // add a new line
       var newLine = document.createElement("br");
       document.getElementById("class_lists").appendChild(newLine);
+
+      // Check if the class is in the current filter list
+      // Check if current_filter_classes is defined
+      if ((current_filter_classes) && (current_filter_classes.includes(global_class_names[i]))) {
+        checkbox.checked = true;
+        console.log("Checked: ", global_class_names[i])
+      }
     }
   }
 });
@@ -318,4 +384,5 @@ document.getElementById("Apply-Config").addEventListener("click", function () {
     var data = xhr.responseText;
     console.log("response: ", data);
   }
+  update_filter_list();
 });
