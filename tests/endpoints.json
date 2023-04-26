@@ -1,0 +1,96 @@
+[   {
+        "url": "/config_action",
+        "method": "POST",
+        "headers": {
+            "Content-Type": "application/json"
+        },
+        "data": {
+            "config": "save"
+        }
+    },
+    {
+        "url": "/robot/set-speed",
+        "method": "POST",
+        "headers": {
+            "Content-Type": "application/json"
+        },
+        "data": {
+            "v": 2.0
+        }
+    },
+    {
+        "url": "/robot/set-callback",
+        "method": "POST",
+        "headers": {
+            "Content-Type": "application/json"
+        },
+        "data": {
+            "IP": "10.9.0.250",
+            "port": 5000,
+            "url": "/robot/set-items",
+            "type": "objects"
+        }
+    },
+    {
+        "url": "/robot/config",
+        "method": "POST",
+        "headers": {
+            "Content-Type": "application/json"
+        },
+        "data": {
+            "exclude": [
+                "graphic_paper",
+                "aerosol",
+                "notamaterial"
+            ],
+            "s": "BIG",
+            "turn-on-when-moving": 1,
+            "history-filter": true
+        }
+    },
+    {
+        "url": "/robot/get-object",
+        "method": "GET",
+        "params": {
+            "no": 1
+        }
+    },
+    {
+        "url": "/v2/taxonomy/classes",
+        "method": "GET"
+    },
+    {
+        "url": "/warmupset/command",
+        "method": "POST",
+        "headers": {
+            "Content-Type": "application/json"
+        },
+        "data": {
+            "capture-warm-up-set": true
+        }
+    },
+    {
+        "url": "/get_v2_model_file_name",
+        "method": "GET"
+    },
+    {
+        "url": "/get_model_type",
+        "method": "GET"
+    },
+    {
+        "url": "/get_software_tag",
+        "method": "GET"
+    },
+    {
+        "url": "/get_box_identifier",
+        "method": "GET"
+    },
+    {
+        "url": "/get_current_params",
+        "method": "GET"
+    },
+    {
+        "url": "/get_current_params/cam.13220495.Zoom",
+        "method": "GET"
+    }
+]
