@@ -3,7 +3,14 @@ var global_class_names
 var base_url
 
 function update_clicked() {
-  base_url = "http://" + document.getElementById("boxip").value + ":8080";
+
+  var ip = document.getElementById("boxip").value;
+
+  // Save the IP address in localStorage
+  localStorage.setItem('box_ip_address', ip);
+  console.log("box_ip_address: ", localStorage.getItem('box_ip_address'));
+
+  base_url = "http://" + ip + ":8080";
   var img_src = base_url + "/support/live/rendered";
   var img = document.getElementById("livestream");
   img.src = img_src;
@@ -70,8 +77,17 @@ function update_clicked() {
       document.getElementById("class_lists").appendChild(newLine);
     }
   }
-
 }
+
+window.addEventListener('load', function() {
+  // Get the value of the 'box_ip_address' cookie
+  var box_ip_address = localStorage.getItem('box_ip_address');
+
+  // If the cookie exists, set the value of the 'boxip' input element to the cookie value
+  if (box_ip_address) {
+    document.getElementById('boxip').value = box_ip_address;
+  }
+});
 
 var interval = setInterval(function() {
   var is_checked = document.getElementById("objectdata").checked;
@@ -86,7 +102,6 @@ var interval = setInterval(function() {
       textarea = document.getElementById("HistoryText");
       textarea.value = document.getElementById("HistoryText").value + "\n" + data;
       textarea.scrollTop = textarea.scrollHeight;
-      
     }
 
     xhr.send();
