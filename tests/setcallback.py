@@ -1,5 +1,13 @@
 import requests
 import json
+from enum import Enum
+
+
+class CallbackType(Enum):
+    OBJECTS = "objects"
+    IMAGE = "image"
+    HEARTBEAT = "heartbeat"
+
 
 class RobotCallback:
     def __init__(self, ip, port, url, callback_type):
@@ -27,15 +35,16 @@ class RobotCallback:
         response_body = response.content.decode('utf-8')
         return response_body
 
+
 if __name__ == '__main__':
     callback_server_data = {
-        'IP': '192.168.1.42',
+        'IP': '10.9.0.56',
         'port': 3333,
-        'url': '/robot/set-items',
-        'type': 'objects'
+        'url': '/robot/set-image',
+        'type': CallbackType.IMAGE.value
     }
 
-    gmu_ip = '192.168.1.205'
+    gmu_ip = '10.9.0.17'
     gmu_port = '8080'
 
     callback = RobotCallback(callback_server_data['IP'], callback_server_data['port'], callback_server_data['url'], callback_server_data['type'])
