@@ -6,27 +6,6 @@ import numpy as np
 
 app = Flask(__name__)
 
-@app.route('/robot/set-image', methods=['POST'])
-def receive_image():
-    data = request.data
-
-    # Decode and verify if the image is valid
-    jpg_original = base64.b64decode(data)
-
-    # Convert the image data to a format compatible with HTML
-    jpg_as_np = np.frombuffer(jpg_original, dtype=np.uint8)
-    image_buffer = cv.imdecode(jpg_as_np, flags=1)
-    _, img_encoded = cv.imencode('.png', image_buffer)
-    img_base64 = base64.b64encode(img_encoded).decode('utf-8')
-
-    # Save the image to a file
-    with open('image.png', 'wb') as f:
-        f.write(jpg_original)
-
-    # Render the template with the image
-    return render_template('image.html', img_base64=img_base64)
-
-
 @app.route('/robot/set-heartbeat', methods=['POST'])
 def receive_heartbeat():
     data = request.data
@@ -38,7 +17,7 @@ if __name__ == '__main__':
         'IP': '192.168.1.42',
         'port': 3333,
         'url': '/robot/set-heartbeat',
-        'type': CallbackType.IMAGE.value
+        'type': CallbackType.HEARTBEAT.value
     }
 
     gmu_ip = '192.168.1.205'
