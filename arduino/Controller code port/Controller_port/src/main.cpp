@@ -267,6 +267,9 @@ void computeCycleLengths() {
 	measure_image_capture_duration_us = config.full_cycle_len_us;
 	measure_pulse_cycle_duration_us = config.lights_pulse_len_us;
 	measure_pulse_duty_duration_us = config.light_pulse_duty_len_us;
+	Serial.println("full cycle len: " + String(config.full_cycle_len_us));
+	Serial.println("pulse len: " + String(config.lights_pulse_len_us));
+
 
 }
 
@@ -755,7 +758,7 @@ void set_default_config(eeprom_data::configuration_type& default_config)
 {
 	// Setup default values for configuration
 	default_config.write_counter = 0;
-	default_config.auto_mode_on = true;								// if true, light is derived out of exposure time
+	default_config.auto_mode_on = false;								// if true, light is derived out of exposure time
 	default_config.full_cycle_len_us = 1000000UL/IMAGE_FREQUENCY;	// now_us [us] between two images. In normal operations, anything between 1000000/3 fps and 100000/20 fps is allowed
 	default_config.lights_pulse_len_us = LIGHT_PULSE_LEN_US;		// [us] length of one light pulse + the break afterwards = 10ms = 100 Hz
 	default_config.no_of_strobes = default_config.full_cycle_len_us/default_config.lights_pulse_len_us;	// no of pulses in a full cycle
@@ -1042,6 +1045,7 @@ bool  execute_serial_command() {
 					if (((l >= 1) && (l <= 30))) {
 						// do not set immediately but let this happen in the loop at the beginning at a cycle
 						input_full_cycle_len_us  = ((1000000UL/l)>>2)<<2; // timer has a resolution of 8us, so make it dividable by
+						Serial.println("Set to: " + String(input_full_cycle_len_us));
 						Serial.println(RETURN_OK);
 					}
 					else {
@@ -1102,6 +1106,7 @@ void loop() {
  		if (now_us - next_pulse_start_time < config.full_cycle_len_us) {
 			if (power_on) {
 				setLED(1);
+				Serial.println("LED On!");
 				digitalWriteFast(PIN_LIGHTING_PNP, HIGH); //turn lights on
 				if (nth_strobe == 0) {
 					if (!image_capture_turned_on) {
@@ -1117,6 +1122,7 @@ void loop() {
 							Serial.print('o');
 #endif
 						measureImageCapture(); // quality assurance, measure average frequency
+						Serial.println("*");
 
 					}
 				} else {
@@ -1145,6 +1151,7 @@ void loop() {
 	} else {
  		if (now_us - next_pulse_end_time < config.full_cycle_len_us) {
 			if (power_on) {
+				Serial.println("LED Off!");
 				digitalWriteFast(PIN_LIGHTING_PNP, LOW);// turn lights off
 
 				// tell your slave to start the cycle when we are at the end
@@ -1160,6 +1167,8 @@ void loop() {
 				Serial.print('>');
 #endif
 			if (nth_strobe < config.no_of_strobes-1) {
+				Serial.println("Strobe: " + String(nth_strobe));
+				Serial.println("Number of strobes: " + String(config.no_of_strobes));
 				nth_strobe++;
 			}
 			else {
@@ -1184,6 +1193,7 @@ void loop() {
 				}
 			}
 			pulse_turned_off = true;
+			digitalWrite(D6, pulse_turned_off);
 			pulse_state = false;
 			computePulseStartTime();
 		}
@@ -1306,9 +1316,11 @@ void loop() {
 			}
 		}
 	}
-
+	Serial.println("Outerloop");
+	digitalWrite(D6, pulse_turned_off);
 	// after the pulse we have 5-9ms time for some paperwork
 	if (pulse_turned_off) {
+		Serial.println("no pulse phase");
 		// check after the last pulse if image has been taken at some time
 		if ((nth_strobe == config.no_of_strobes-1) && power_on ) {
 				handleCameraStrobeLatch();
@@ -1324,10 +1336,18 @@ void loop() {
 	setLED(2);
     bool fps_not_zero = (input_full_cycle_len_us != 0);
     bool fps_has_changed = (input_full_cycle_len_us != config.full_cycle_len_us);
+	if(fps_not_zero && fps_has_changed)
+	{
+		Serial.println("Framerate changed");
+	}
 
     //Checks for light pulse on time change (i.e. exposure time changed)
     bool light_pulse_not_zero = (input_light_pulse_duty_len_us != 0);
     bool light_pulse_has_changed = (input_light_pulse_duty_len_us != config.light_pulse_duty_len_us);
+	if(light_pulse_not_zero && light_pulse_has_changed)
+	{
+		Serial.println("Light pulse length changed");
+	}
 
     bool not_external_trigger_mode = (!config.external_trigger_mode);
 
