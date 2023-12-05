@@ -274,7 +274,7 @@ void computeCycleLengths() {
 }
 
 inline void computePulseStartTime() {
-	unsigned long start_time = start_cycle_time_us + nth_strobe * config.lights_pulse_len_us;
+	unsigned long start_time = start_cycle_time_us + (nth_strobe * config.lights_pulse_len_us);
 	next_pulse_start_time  = start_time - CONTROLLINO_TIME_TO_GO_HIGH;
 	next_pulse_end_time  = start_time + config.light_pulse_duty_len_us - CONTROLLINO_TIME_TO_GO_LOW;
 	next_camera_off_time = start_time + CAMERA_TRIGGER_LEN_US - CONTROLLINO_TIME_TO_GO_LOW;
@@ -1103,7 +1103,7 @@ void loop() {
 	if (pulse_state == false) {
 		setLED(0);
 		// the way this statement is phrased deals with an overflow of now_us
- 		if (now_us - next_pulse_start_time < config.full_cycle_len_us) {
+ 		if (true/*now_us - next_pulse_start_time < config.full_cycle_len_us*/) {
 			if (power_on) {
 				setLED(1);
 				Serial.println("LED On!");
