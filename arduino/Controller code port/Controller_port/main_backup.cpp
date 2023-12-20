@@ -5,37 +5,12 @@
 //***************************************************************
 
 #include <Arduino.h>
-#include <limits.h>
-#include <eeprom.h>
-#include <avr/wdt.h>  // watchdog
+#include "gpversion.h"
+#include "gpPins.h"
+#include "storage.h"
+#include "watchdog.h"
 #include "digitalWriteFast.h"
-#include "controllerErrors.h"
 
-// whenever EEPROM data structure  or the programme changes, increase this number
-#define VERSION 48
-// History:
-// V48: Fix numerical accuracy in computeCycleLengths()
-// V47: Added external trigger support t/T to toggle over serial
-// V46: NIR pulse sync support for integration
-// V45: ttyUSB support, daisy chaining now supports camera frequency update
-// V44: introduced propagation cycle
-// V43: Increased max duty cycle
-// V42: Improved measurement between Controllino and AVR pin
-// V41: Daisy chaining
-// V40: bugfix: increasing the frequency caused the controller to reset
-// V37-39: more measurements, and adjusted accordingly
-// V36: made serial command input faster
-// V35: better logging and documentation
-// V34: After measurements with a scope massive improvement of timing
-// V33: Timing improvement
-// V32: Quicker Adjustment to changes of exposure time
-// V31: Changed Fan PIN to 7
-// V30: Changed Fan PIN to 9
-// V29: Changed Fan PIN to 8
-
-// magic number indicates if EEPROM has been initialized correctly
-const long EEPROM_MAGIC_NUMBER = 1566+VERSION;  // magic number to indicate whether the AVR's EEPROM has been initialized already
-#define EEPROM_MAX_WRITES 50000UL				// maximum number of writes in EEPROM before switching to next memory block
 
 // connections to the lighting
 #define IMAGE_FREQUENCY 5						// [Hz] initial frequency of camera
@@ -50,57 +25,29 @@ const long EEPROM_MAGIC_NUMBER = 1566+VERSION;  // magic number to indicate whet
 
 #define LIGHTS_PULSE_ON_DELAY 20				// [us] delay of lights to reach full brightness (datasheet)
 #define LIGHTS_PULSE_OFF_DELAY 20				// [us] delay of lights to reach full darkness (datasheet)
-#define WATCH_DOG_WAIT WDTO_120MS
-
-// connections to the camera and the lights
-#define PIN_ERROR_LED 9							// output PIN for the red error LED, Controllino Pin D5
-#define PIN_LIGHTING_PNP PIN_A4					// output PIN to be connect to the lights STROBE_IN, Controllino Pin D6
-#define PIN_CAMERA_TRIGGER_IN PIN_A5			// output PIN to be connected to the camera's TRIGGER_IN(+) PIN, Controllino Pin D7
-#define PIN_CAMERA_STROBE_OUT 3					// input interrupt PIN IN1 to be connected to the camera's STROBE_OUT indicating the exposure time.
-#define PIN_FAN 7								// output PIN for fan, Arduino PIN_D4, Controllino D3
-
-#define PIN_DAISY_OUT0 10						// Daisy chain output pin
-#define PIN_DAISY_OUT1 11						// Daisy chain output pin
-#define PIN_DAISY_OUT2 12						// Daisy chain output pin
-#define PIN_DAISY_IN0 2							// interruptible PIN, Daisy Chain Input Pin
-#define PIN_DAISY_IN1 PIN_A0					// Daisy Chain Input Pin
-#define PIN_DAISY_IN2 PIN_A1					// Daisy Chain Input Pin
+#define WATCH_DOG_WAIT 120
 
 #define BAUD_RATE 115200						// fixed baud rate of serial interface
 #define LIGHT_PULSE_LEN_US (1000000UL/PULSING_FREQUENCY) // [us] length of the pulse including the break (represents 50Hz)
 
+// error codes returned over the serial interface
+#define RETURN_OK 0								// command executed successfully
+#define ERROR_IMAGE_FREQUENCY_OUT_OF_RANGE 1	// passed duration between two images is not between 3 and 20 fps
+#define ERROR_UNKNOWN_COMMAND 2					// passed command is unknown
+#define ERROR_IMAGE_NOT_TAKEN 3					// camera did not confirm via STROBE_OUT that image has been taken
+#define ERROR_IMAGE_FREQUENCY_BAD 4				// camera image grabbing frequency has more than 10% deviation from target
+#define ERROR_PULSE_FREQUENCY_BAD 5				// strobing frequency has more than 10% deviation from target
+#define ERROR_PULSE_DUTY_LEN_BAD 6				// strobing duty len has more than 10% deviation from target
+#define ERROR_PROPAGATION_OUT_OF_RANGE 7        // propagation mode out of range
 
 #define COMPUTE_SCALING_FACTOR 2000									// scaling factor to use during computeCycleLengths() to fix numerical accuracy issues
 #define COMPUTE_SCALING_FACTOR_DIV2 COMPUTE_SCALING_FACTOR/2		// as above but divided by 2
 
-const uint8_t number_of_error_codes = (StrobingControllerError::Unknown)+1;
+#define LED_PIN_7 35
+#define LED_PIN_3 31
 
-// all configuration items contained in configuration_type are stored in EEPROM
-// the following block is the EEPROM master block that refers to the data blocks
-// purpose is to distribute the changes in EEPROM over the entire memory to leverage
-// the full lifespan. Masterblock only contains a magic number and a pointer to a "bank"
-// that stores the actual data. If the writeCounter of the bank gets too high, the next bank
-// is allocated in the master block and used from now on.
+const uint8_t number_of_error_codes = ERROR_PROPAGATION_OUT_OF_RANGE+1;
 
-struct eeprom_master_type {
-	uint16_t magic_number;					// marker to indicate correct initialization
-	uint16_t mem_bank_address;					// if true camera's STROBE_IN is checked if an images has been taken (error if not)
-	void setup() {
-		magic_number = EEPROM_MAGIC_NUMBER;		// marker to indicate correct initialization
-		mem_bank_address = sizeof(eeprom_master_type);	// location of configuration type block
-	}
-	void write() {
-		eeprom_write_word((uint16_t*)0,magic_number);
-		eeprom_write_word((uint16_t*)2,mem_bank_address);
-
-		magic_number = eeprom_read_word((uint16_t*)0);
-		mem_bank_address = eeprom_read_word((uint16_t*)2);
-	}
-	void read() {
-		magic_number = eeprom_read_word((uint16_t*)0);
-		mem_bank_address = eeprom_read_word((uint16_t*)2);
-	}
-} eeprom_master_block;
 
 bool power_on = false;							// true if lights and camera are turned on
 bool input_power_on = false;					// true if we received a command via serial to turn on power. Will be carried out at the beginning of a cycle.
@@ -119,51 +66,6 @@ inline unsigned long delayedMicros() {
 // global time, is updated in every cycle of loop() and used nearly everywhere
 volatile unsigned long now_us = delayedMicros();
 
-// This is the configuration memory block (the aforementioned "bank"). There is always one
-// active memory bank, its location in EPPROM changes whenever the write counter gets too high
-struct configuration_type {
-	uint16_t write_counter;						// counts the write operation to change the EPPROM address when overflow
-	bool auto_mode_on;							// if true, light is derived out of exposure time
-	uint16_t no_of_strobes;						// no of pulses in a full cycle
-	bool external_trigger_mode;					// if true, we are in external trigger mode
-
-	unsigned long full_cycle_len_us;			// now_us [us] between two images. In normal operations, anything between 1000000/3 fps and 100000/20 fps is allowed
-	unsigned long lights_pulse_len_us;			// [us] length of one light pulse + the break afterwards = 20ms
-	unsigned long light_pulse_duty_len_us;		// [us] length of a duty cycle of one pulse, like 1ms, always < lights_pulse_len_us
-
-	// initialize all configuration values to factory settings
-	void setup() {
-		write_counter = 0;
-		auto_mode_on = true;											// if true, light is derived out of exposure time
-		full_cycle_len_us = 1000000UL/IMAGE_FREQUENCY;					// now_us [us] between two images. In normal operations, anything between 1000000/3 fps and 100000/20 fps is allowed
-		lights_pulse_len_us = LIGHT_PULSE_LEN_US;						// [us] length of one light pulse + the break afterwards = 10ms = 100 Hz
-		no_of_strobes = full_cycle_len_us/lights_pulse_len_us;			// no of pulses in a full cycle
-		light_pulse_duty_len_us = lights_pulse_len_us/MAX_DUTY_RATIO;	// [us] length of a duty cycle of one pulse, like 1ms, always < lights_pulse_len_us
-		external_trigger_mode = false;									// if true, we are in external trigger mode
-	}
-
-	void write() ;
-	void read() ;
-	void writeByte(uint16_t no_of_byte);
-} config;
-
-// write the full config block to EEPROM
-void configuration_type::write() {
-	eeprom_write_block(&config, (char*)eeprom_master_block.mem_bank_address, sizeof(config));
-}
-
-// read full config block from EEPROM
-void configuration_type::read() {
-	eeprom_read_block(&config, (char*)eeprom_master_block.mem_bank_address, sizeof(config));
-}
-
-// write just one byte of config block to EEPROM (used for delayed write)
-void configuration_type::writeByte(uint16_t no_of_byte) {
-	if (no_of_byte < sizeof(config)) {
-		uint8_t write_byte = ((uint8_t*)&config)[no_of_byte];
-		EEPROM.write(no_of_byte+eeprom_master_block.mem_bank_address, write_byte);
-	}
-}
 
 unsigned long start_cycle_time_us = 0;			// [us] start time of the current cycle [us]
 volatile unsigned long input_full_cycle_len_us = 0;		// [us] input len of full image grabbing cycle with delayed write to config
@@ -179,8 +81,6 @@ constexpr unsigned long TWO_SECONDS_IN_us = 2000000UL;	// [us] 2 seconds
 unsigned long external_trigger_period_us = TWO_SECONDS_IN_us; 	//[us] the period of time the lights will be on after an external trigger
 unsigned long cycle_time_estimate = 0;		// estimated length of the cycle for external trigger mode.
 
-bool freqChange_request = false; 			// A frequency change has been requested.
-
 #ifdef DEBUG
 bool debugging_mode = false;					// if true, each pulse is sent to Serial with a nice pattern
 #endif
@@ -189,11 +89,11 @@ bool fan_mode		= false;					// if true, the fan is supposed to shine
 const int PROPAGATE_POWER_ON = 1;
 const int PROPAGATE_POWER_OFF = 2;
 unsigned long propagation_mode = 0;				// a number of controller has been changed by master
-
-
-
-
 unsigned long nth_strobe = 0;					// counting the current number of pulses within a cycle, goes up to config.no_of_strobes
+
+// Setup storage object
+Storage storage;
+eeprom_data::configuration_type& config = storage.config_;
 
 // possible states of the main loop
 bool pulse_state = false;
@@ -365,11 +265,10 @@ void computeCycleLengths() {
 	measure_image_capture_duration_us = config.full_cycle_len_us;
 	measure_pulse_cycle_duration_us = config.lights_pulse_len_us;
 	measure_pulse_duty_duration_us = config.light_pulse_duty_len_us;
-
 }
 
 inline void computePulseStartTime() {
-	unsigned long start_time = start_cycle_time_us + nth_strobe * config.lights_pulse_len_us;
+	unsigned long start_time = start_cycle_time_us + (nth_strobe * config.lights_pulse_len_us);
 	next_pulse_start_time  = start_time - CONTROLLINO_TIME_TO_GO_HIGH;
 	next_pulse_end_time  = start_time + config.light_pulse_duty_len_us - CONTROLLINO_TIME_TO_GO_LOW;
 	next_camera_off_time = start_time + CAMERA_TRIGGER_LEN_US - CONTROLLINO_TIME_TO_GO_LOW;
@@ -384,36 +283,9 @@ inline void computePulseStartTime() {
 long current_config_byte_to_write = -1;							// number of byte of config which is currently written
 
 void delayedWriteConfiguration() {
-	current_config_byte_to_write = 0;	// start delayed write
+	storage.set_byte_index(0);	// start delayed write
 	config.write_counter++;				// mark an additional write cycle
 }
-
-// called regularly in pulse breaks, writes one byte to EPPROM, costs ca. 3ms
-bool updateEPPROMWrite() {
-	if (current_config_byte_to_write >= 0) {
-		if (config.write_counter >= EEPROM_MAX_WRITES) {
-			// new address, starting at sizeof_eeprom and increased in steps of sizeof(config)
-			eeprom_master_block.mem_bank_address += sizeof(config);
-			if (eeprom_master_block.mem_bank_address + sizeof(config) >= E2END)
-				eeprom_master_block.mem_bank_address = sizeof(eeprom_master_block);
-			current_config_byte_to_write = 0;
-			config.write_counter = 0;
-		}
-		config.writeByte(current_config_byte_to_write);
-		current_config_byte_to_write++;
-		if (current_config_byte_to_write >= sizeof(config)) {
-			current_config_byte_to_write = -1; // finish current write operation
-			// finally, once the last byte has been written and we just started a new block in EEPROM
-			// mark that in the master block
-			if (config.write_counter == 0) // new EEPROM block?
-				eeprom_master_block.write();
-		}
-		return true;
-	}
-
-	return false;
-}
-
 
 #define DO_NIR_TRIGGER
 
@@ -444,13 +316,6 @@ inline void computeNirCycleLengths() {
 }
 #endif // DO_NIR_TRIGGER
 
-// reading is done during setup only, so this trick is not necessary
-void readConfiguration() {
-	eeprom_master_block.read();
-
-	if (eeprom_master_block.mem_bank_address + sizeof(config) <= E2END)
-		config.read();
-}
 
 bool trigger_return_configuration = false;
 void returnConfiguration() {
@@ -779,7 +644,7 @@ void printConfiguration() {
 	Serial.println(config.auto_mode_on);
 
 	Serial.print(F("	EEPROM(mem_bank_address="));
-	Serial.print(eeprom_master_block.mem_bank_address);
+	Serial.print(storage.eeprom_master_block.mem_bank_address);
 	Serial.print(F(", write_counter="));
 	Serial.print(config.write_counter);
 	Serial.println(F(")"));
@@ -796,9 +661,6 @@ void printConfiguration() {
 	Serial.print(F("	External trigger period: "));
 	Serial.println(external_trigger_period_us);
 
-	Serial.print(F(" nth_strobe: "));
-	Serial.println(nth_strobe);
-
 	Serial.println();
 }
 
@@ -807,7 +669,7 @@ void printHelp() {
 	unsigned hours = seconds / 3600;
 	unsigned minutes = (seconds - hours*3600)/60;
 	seconds = seconds - hours*3600 - minutes*60;
-	Serial.print(F("Camera/Lighting Synchronization (1c1) V"));
+	Serial.print(F("Camera/Lighting Synchronization V"));
 	Serial.println(VERSION);
 	Serial.print("uptime ");
 	Serial.print(hours);
@@ -886,6 +748,17 @@ void cameraStrobeOut() {
 	}
 }
 
+void set_default_config(eeprom_data::configuration_type& default_config)
+{
+	// Setup default values for configuration
+	default_config.write_counter = 0;
+	default_config.auto_mode_on = false;								// if true, light is derived out of exposure time
+	default_config.full_cycle_len_us = 1000000UL/IMAGE_FREQUENCY;	// now_us [us] between two images. In normal operations, anything between 1000000/3 fps and 100000/20 fps is allowed
+	default_config.lights_pulse_len_us = LIGHT_PULSE_LEN_US;		// [us] length of one light pulse + the break afterwards = 10ms = 100 Hz
+	default_config.no_of_strobes = default_config.full_cycle_len_us/default_config.lights_pulse_len_us;	// no of pulses in a full cycle
+	default_config.light_pulse_duty_len_us = default_config.lights_pulse_len_us/MAX_DUTY_RATIO;	// [us] length of a duty cycle of one pulse, like 1ms, always < lights_pulse_len_us
+	default_config.external_trigger_mode = false;
+}
 
 void setup() {
 
@@ -921,7 +794,7 @@ void setup() {
 	digitalWriteFast(PIN_FAN, LOW);
 
 	// fixed baud rate to communicate with Jetson board
-	Serial.begin(BAUD_RATE);
+	 Serial.begin(BAUD_RATE);
 
 
 	// camera's trigger_in is using a raising edge
@@ -934,19 +807,15 @@ void setup() {
 #else
 	Serial.println("R");
 #endif
-	// read configuration from EEPROM (or initialize if EEPPROM is a virgin)
-	readConfiguration();
 
-	// EPPROM has never been touched, initialized it
-	if (eeprom_master_block.magic_number != EEPROM_MAGIC_NUMBER) {
-		// no one ever touched this EEPROM, initialize it
-		Serial.println(F("Initializing EEPROM"));
-		eeprom_master_block.setup();
-		eeprom_master_block.write();
+	// Initialise storage
+	eeprom_data::configuration_type default_config;
+	set_default_config(default_config);
+	// Copy values over to the config obj
+	storage.set_conf(default_config);
 
-		config.setup();
-		config.write();
-	}
+	// If config values are already stored load them, otherwise use default
+	storage.setup();
 
 	// start at the beginning of the cycle
 	if(config.external_trigger_mode)
@@ -959,12 +828,8 @@ void setup() {
 #ifdef DO_NIR_TRIGGER
 	nth_stripe = 0;
 
-
 	computeNirCycleLengths();
 #endif //DO_NIR_TRIGGER
-	// reset the board when wdt_reset() is not called every 120ms
-	wdt_enable(WATCH_DOG_WAIT);
-
 
 	trigger_return_configuration = false;
 	power_on = false;
@@ -981,11 +846,13 @@ void setup() {
 	computeNirTriggerStartTime();
 #endif // DO_NIR_TRIGGER
 
-
 	// for quality reasons this interrupt is listening to the STROBE_OUT signal of the camera
 	// to check if
-	attachInterrupt(digitalPinToInterrupt( PIN_CAMERA_STROBE_OUT), cameraStrobeOut, CHANGE);
-	attachInterrupt(digitalPinToInterrupt( PIN_DAISY_IN0), daisyChainIn, RISING );
+	//attachInterrupt(digitalPinToInterrupt( PIN_CAMERA_STROBE_OUT), cameraStrobeOut, CHANGE);
+	//attachInterrupt(digitalPinToInterrupt( PIN_DAISY_IN0), daisyChainIn, RISING );
+
+	watchdog.enable(WATCH_DOG_WAIT);
+	watchdog.refresh();
 }
 
 
@@ -1019,11 +886,11 @@ bool  execute_serial_command() {
 				break;
 			case '0':
 				if (command == "") {
-					eeprom_master_block.setup();
-					eeprom_master_block.write();
-					config.setup();
-					config.write();
-					Serial.println(ReturnOk);
+					eeprom_data::configuration_type default_config;
+					set_default_config(default_config);
+					storage.set_conf(default_config);
+					storage.write();
+					Serial.println(RETURN_OK);
 					delay(1000);  // let the watch dog reset
 				}
 				else
@@ -1035,7 +902,7 @@ bool  execute_serial_command() {
 				break;
 			case 'e':
 				delayedWriteConfiguration();
-				Serial.println(ReturnOk);
+				Serial.println(RETURN_OK);
 				break;
 			case 's':
 				if (command == "")
@@ -1051,7 +918,7 @@ bool  execute_serial_command() {
 			case 'D':
 				if (command == "") {
 					debugging_mode = (inputChar=='d');
-					Serial.println(ReturnOk);
+					Serial.println(RETURN_OK);
 				}
 				else
 					addCmd(inputChar);
@@ -1062,7 +929,7 @@ bool  execute_serial_command() {
 				if (command == "") {
 					error_led_mode= (inputChar=='n');
 					digitalWriteFast(PIN_ERROR_LED, error_led_mode?HIGH:LOW);
-					Serial.println(ReturnOk);
+					Serial.println(RETURN_OK);
 				}
 				else
 					addCmd(inputChar);
@@ -1073,7 +940,7 @@ bool  execute_serial_command() {
 				if (command == "") {
 					fan_mode= (inputChar=='v');
 					digitalWriteFast(PIN_FAN, fan_mode?HIGH:LOW);
-					Serial.println(ReturnOk);
+					Serial.println(RETURN_OK);
 				}
 				else
 					addCmd(inputChar);
@@ -1083,7 +950,7 @@ bool  execute_serial_command() {
 			case 'A':
 				if (command == "") {
 					config.auto_mode_on = (inputChar=='a');
-					Serial.println(ReturnOk);
+					Serial.println(RETURN_OK);
 				}
 				else
 					addCmd(inputChar);
@@ -1098,7 +965,7 @@ bool  execute_serial_command() {
 						if ((inputChar =='P') && power_on)
 							input_power_off = true;
 					}
-					Serial.println(ReturnOk);
+					Serial.println(RETURN_OK);
 				}
 				else
 					addCmd(inputChar);
@@ -1114,7 +981,7 @@ bool  execute_serial_command() {
 					{
 						config.external_trigger_mode = false;
 					}
-					Serial.println(ReturnOk);
+					Serial.println(RETURN_OK);
 				}
 				else
 					addCmd(inputChar);
@@ -1131,38 +998,37 @@ bool  execute_serial_command() {
 					if (((l >= 1) && (l <= 30))) {
 						// do not set immediately but let this happen in the loop at the beginning at a cycle
 						input_full_cycle_len_us  = ((1000000UL/l)>>2)<<2; // timer has a resolution of 8us, so make it dividable by
-						freqChange_request = true;
-						Serial.println(ReturnOk);
+						Serial.println("Set to: " + String(input_full_cycle_len_us));
+						Serial.println(RETURN_OK);
 					}
 					else {
-						printError(ErrorImageFrequencyOutOfRange);
+						printError(ERROR_IMAGE_FREQUENCY_OUT_OF_RANGE);
 					}
 					emptyCmd();
 				} else if (command.startsWith("l")) {
 					unsigned long l = command.substring(1).toInt();
 					if ((l>=50) && (l<=5000)) {
 						input_light_pulse_duty_len_us  = (l>>2)<<2; // timer has a resolution of 8us, so make it dividable by 4
-						freqChange_request = true;
-						Serial.println(ReturnOk);
+						Serial.println(RETURN_OK);
 					}
 					else {
-						printError(ErrorImageFrequencyOutOfRange);
+						printError(ERROR_IMAGE_FREQUENCY_OUT_OF_RANGE);
 					}
 					emptyCmd();
 				} else if (command.startsWith("b")) {
 					unsigned long l = command.substring(1).toInt();
 					if ((l >= 0) && (l <= PROPAGATE_POWER_OFF)) {
 						propagation_mode = l;
-					    Serial.println(ReturnOk);
+					    Serial.println(RETURN_OK);
 					}
 					else {
-						printError(ErrorPropagationOutOfRange);
+						printError(ERROR_PROPAGATION_OUT_OF_RANGE);
 					}
 					emptyCmd();
 				}
 
 				if (command != "") {
-					printError(ErrorUnknownCommand);
+					printError(ERROR_UNKNOWN_COMMAND);
 				}
 				emptyCmd();
 				break;
@@ -1173,11 +1039,10 @@ bool  execute_serial_command() {
 
 			return true;
 
-		} // if (Serial.available())
+		}
 	else
 		return false;
 }
-
 
 void loop() {
 
@@ -1188,12 +1053,11 @@ void loop() {
 	// This is most important to happen right after measuring the time to get the most precision
 	bool pulse_turned_on = false;	// true if the lights just turned on
 	bool pulse_turned_off = false;	// true, if the lights just turned off
-
 	if (pulse_state == false) {
-		///@note Some modulo math to deal with overflow this is the same as
-		//		((now - next) % ULONG_MAX) < ULONG_MAX/2
-		unsigned long modulo_diff = now_us - next_pulse_start_time;
- 		if (modulo_diff < ULONG_MAX/2) {
+		// the way this statement is phrased deals with an overflow of now_us
+		int delta = (int)next_pulse_start_time - (int)now_us;
+		bool time_to_light = (delta < 0);
+ 		if (time_to_light) {
 			if (power_on) {
 				digitalWriteFast(PIN_LIGHTING_PNP, HIGH); //turn lights on
 				if (nth_strobe == 0) {
@@ -1205,10 +1069,6 @@ void loop() {
 						// indicate that the camera gets the trigger to take an image
 						digitalWriteFast(PIN_CAMERA_TRIGGER_IN,  HIGH);
 
-#ifdef DEBUG
-						if (debugging_mode)
-							Serial.print('o');
-#endif
 						measureImageCapture(); // quality assurance, measure average frequency
 
 					}
@@ -1219,40 +1079,20 @@ void loop() {
 					}
 				}
 			}
-
-#ifdef DEBUG
-			if (nth_strobe > 0) // following call takes 40us, dont do that in the pulse when the camera is turned on to have some buffer there
-				measurePulseStart(); // quality assurance, measure average frequency
-
-			if (debugging_mode)
-				if (nth_strobe == 0)
-					Serial.print('[');
-				else
-					Serial.print('<');
-#endif
 			pulse_turned_on = true;
 			pulse_state = true;
-		} else {
-			execute_serial_command();
 		}
 	} else {
-		unsigned long modulo_diff = now_us - next_pulse_end_time;
- 		if (modulo_diff < ULONG_MAX/2 ) {
+		int delta = (int)next_pulse_end_time - (int)now_us;
+		bool time_to_light_off = (delta < 0);
+ 		if (time_to_light_off) {
 			if (power_on) {
 				digitalWriteFast(PIN_LIGHTING_PNP, LOW);// turn lights off
-
 				// tell your slave to start the cycle when we are at the end
 				if (nth_strobe == 0) {
 					setDaisyChainOutput(DAISY_INPUT_CYCLE_START);
 				}
-
 			}
-#ifdef DEBUG
-			if (nth_strobe > 0)
-				measurePulseEnd(); // quality assurance, measure average frequency
-			if (debugging_mode)
-				Serial.print('>');
-#endif
 			if (nth_strobe < config.no_of_strobes-1) {
 				nth_strobe++;
 			}
@@ -1311,27 +1151,21 @@ void loop() {
 	}
 #endif // DO_NIR_TRIGGER
 
-  	wdt_reset();
+	watchdog.refresh();
+	if(power_on == false)
+	{
+		execute_serial_command();
+	}
 
 	if (input_power_on && (nth_strobe == 0) && (!config.external_trigger_mode)) {
 		power_on = input_power_on;
 		input_power_on = false;
-#ifdef DEBUG
-		if (debugging_mode) {
-			Serial.print('+');
-		}
-#endif
 	}
 
 	if (input_power_off) {
 		power_on = false;
 		input_power_off = false;
 		setDaisyChainOutput (DAISY_INPUT_POWER_OFF);
-#ifdef DEBUG
-		if (debugging_mode) {
-			Serial.print('0');
-		}
-#endif
 	}
 
 
@@ -1341,7 +1175,6 @@ void loop() {
 			digitalWriteFast(PIN_CAMERA_TRIGGER_IN,  LOW);
 		}
 	}
-
 
 
 	// *** Auto calibration mode ***
@@ -1358,22 +1191,7 @@ void loop() {
 
 				new_lights_pulse_duty_len_us = constrain(new_lights_pulse_duty_len_us, MIN_DUTY_LEN_US, MAX_DUTY_LEN_US);
 				unsigned long new_lights_pulse_len_us = MAX_DUTY_RATIO * new_lights_pulse_duty_len_us ;
-#ifdef DEBUG
-				if (debugging_mode) {
-					Serial.println();
-					Serial.print("calibration:");
-					Serial.print(camera_exposure_avr_deriv_us);
-					Serial.print(",");
-					Serial.print(camera_exposure_last_avr_us);
-					Serial.print(",");
-					Serial.print(camera_exposure_avr_us);
-					Serial.print(",");
-					Serial.print(new_lights_pulse_len_us);
-					Serial.print(",");
-					Serial.print(new_lights_pulse_duty_len_us);
-					Serial.println(")");
-				}
-#endif
+
 				camera_exposure_last_avr_us = camera_exposure_avr_us;
 				config.lights_pulse_len_us = new_lights_pulse_len_us;
 				config.light_pulse_duty_len_us = new_lights_pulse_duty_len_us;
@@ -1396,75 +1214,81 @@ void loop() {
 			}
 		}
 	}
-
 	// after the pulse we have 5-9ms time for some paperwork
-	if (pulse_turned_off || freqChange_request) {
+	if (pulse_turned_off) {
 		// check after the last pulse if image has been taken at some time
 		if ((nth_strobe == config.no_of_strobes-1) && power_on ) {
 				handleCameraStrobeLatch();
 		}
-
+		execute_serial_command();
 		// do one of the following tasks in their order of priority
 
-		// Check to see if IN0 has been triggered. This will happened in daisy chain or external trigger mode
+		// Check to see if IN0 has been triggered. This will happend in daisy chain or external trigger mode
 		pollIN0InterruptEvent();
 
-	// *** Accept new input from UI in the second cycle, right after lights turned off  ***
-    //Checks for FPS change
-    bool fps_not_zero = (input_full_cycle_len_us != 0);
-    bool fps_has_changed = (input_full_cycle_len_us != config.full_cycle_len_us);
-
-    //Checks for light pulse on time change (i.e. exposure time changed)
-    bool light_pulse_not_zero = (input_light_pulse_duty_len_us != 0);
-    bool light_pulse_has_changed = (input_light_pulse_duty_len_us != config.light_pulse_duty_len_us);
-
-    bool not_external_trigger_mode = (!config.external_trigger_mode);
-
-	if(( ((fps_not_zero && fps_has_changed) || (light_pulse_not_zero && light_pulse_has_changed)) && not_external_trigger_mode )) {
-		freqChange_request = false;
-		if (input_full_cycle_len_us != 0) {
-			config.full_cycle_len_us = input_full_cycle_len_us;
-		}
-		if (input_light_pulse_duty_len_us != 0) {
-			config.light_pulse_duty_len_us = input_light_pulse_duty_len_us;
-			config.light_pulse_duty_len_us = constrain(config.light_pulse_duty_len_us, MIN_DUTY_LEN_US, MAX_DUTY_LEN_US);
-			config.lights_pulse_len_us = MAX_DUTY_RATIO * config.light_pulse_duty_len_us;
-		}
-
-		input_full_cycle_len_us = 0;
-		input_light_pulse_duty_len_us = 0;
-		nth_strobe=0;
-
-		if(!config.external_trigger_mode)
+		// *** Accept new input from UI in the second cycle, right after ligts turned off  ***
+		//Checks for FPS change
+		bool fps_not_zero = (input_full_cycle_len_us != 0);
+		bool fps_has_changed = (input_full_cycle_len_us != config.full_cycle_len_us);
+		if(fps_not_zero && fps_has_changed)
 		{
+			Serial.println("Framerate changed");
+		}
+
+		//Checks for light pulse on time change (i.e. exposure time changed)
+		bool light_pulse_not_zero = (input_light_pulse_duty_len_us != 0);
+		bool light_pulse_has_changed = (input_light_pulse_duty_len_us != config.light_pulse_duty_len_us);
+		if(light_pulse_not_zero && light_pulse_has_changed)
+		{
+			Serial.println("Light pulse length changed");
+		}
+
+		bool not_external_trigger_mode = (!config.external_trigger_mode);
+
+		if (( ((fps_not_zero && fps_has_changed) || (light_pulse_not_zero && light_pulse_has_changed)) && not_external_trigger_mode )) {
+				if (input_full_cycle_len_us != 0) {
+					config.full_cycle_len_us = input_full_cycle_len_us;
+				}
+				if (input_light_pulse_duty_len_us != 0) {
+					config.light_pulse_duty_len_us = input_light_pulse_duty_len_us;
+					config.light_pulse_duty_len_us = constrain(config.light_pulse_duty_len_us, MIN_DUTY_LEN_US, MAX_DUTY_LEN_US);
+					config.lights_pulse_len_us = MAX_DUTY_RATIO * config.light_pulse_duty_len_us;
+				}
+
+				input_full_cycle_len_us = 0;
+				input_light_pulse_duty_len_us = 0;
+				nth_strobe=0;
+
+				if(!config.external_trigger_mode)
+				{
+					computeCycleLengths();
+				}
+		#ifdef DO_NIR_TRIGGER
+				nth_stripe=0;
+				computeNirCycleLengths();
+		#endif //DO_NIR_TRIGGER
+				// ?? Why are we subtracting input_light_pulse_duty_len_us??
+				start_cycle_time_us = now_us + config.lights_pulse_len_us - input_light_pulse_duty_len_us;
+				computePulseStartTime();
+
+		#ifdef DO_NIR_TRIGGER
+				computeNirTriggerStartTime();
+		#endif //DO_NIR_TRIGGER
+
+				daisyChainFindCameraFreq(config.full_cycle_len_us);
+				delayedWriteConfiguration(); // does not actually write but triggers a successive writing process
+			} else if (trigger_return_configuration) { // *** return the status string ***
+				returnConfiguration();
+				trigger_return_configuration = false;
+			} else { // *** write stuff to EEPROM ***
+				// write stuff to EEPROM in the second pulse, so more than one pulse would be nice
+				// write one byte to EEPROM if there is something to write. By this, we do not affect
+				// the main loop while writing since we only have approx 10m in a pulse break to do this
+				storage.updateStorage();
+			}
+
+			//Prep for next loop
+			start_cycle_time_us = now_us + config.lights_pulse_len_us;
 			computeCycleLengths();
-		}
-#ifdef DO_NIR_TRIGGER
-		nth_stripe=0;
-		computeNirCycleLengths();
-#endif //DO_NIR_TRIGGER
-		start_cycle_time_us = now_us + config.lights_pulse_len_us;
-		computePulseStartTime();
-
-#ifdef DO_NIR_TRIGGER
-		computeNirTriggerStartTime();
-#endif //DO_NIR_TRIGGER
-
-		daisyChainFindCameraFreq(config.full_cycle_len_us);
-		delayedWriteConfiguration(); // does not actually write but triggers a successive writing process
-	} else if (trigger_return_configuration) { // *** return the status string ***
-		returnConfiguration();
-		trigger_return_configuration = false;
-	} else { // *** write stuff to EEPROM ***
-		// write stuff to EEPROM in the second pulse, so more than one pulse would be nice
-		// write one byte to EEPROM if there is something to write. By this, we do not affect
-		// the main loop while writing since we only have approx 10m in a pulse break to do this
-		updateEPPROMWrite();
-		}
 	}
-}
-
-void handleFreqChange()
-{
-
 }
