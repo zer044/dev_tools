@@ -1,0 +1,31 @@
+{
+    "object_bay1": [
+        "aluminium_aerosol",
+        "aluminium_can",
+        "aluminium_other"
+    ],
+    "object_bay2": [
+        "pet_bottle_brown_food",
+        "pet_bottle_clear_food",
+        "pet_bottle_clear_food_covered",
+        "pet_bottle_clear_nonfood",
+        "pet_bottle_clear_nonfood_covered",
+        "pet_bottle_coloured_nonfood",
+        "pet_bottle_darkblue_food",
+        "pet_bottle_green_food",
+        "pet_bottle_lightblue_food",
+        "pet_bottle_othercolour_food",
+        "pet_bottle_white_food",
+        "plastic_bottle_black",
+        "plastic_bottle_coloured_yoghurt",
+        "plastic_bottle_natural_yoghurt",
+        "plastic_other",
+        "plastic_other_black",
+        "ps_styrofoam"
+    ],
+    "object_bay3": [
+        "card_corrugated",
+        "card_greyboard"
+    ],
+    "object_bay4": []
+}

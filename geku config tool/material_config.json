@@ -1,0 +1,38 @@
+{
+    "object_bay1_assignment": ["aluminium"],
+    "object_bay2_assignment": ["plastic"],
+    "object_bay3_assignment": ["card"],
+    "object_bay4_assignment": ["other"],
+    "top_level_to_taxonomy_dict": {
+        "aluminium": [
+            "aluminium_aerosol",
+            "aluminium_can",
+            "aluminium_other"
+        ],
+        "plastic": [
+            "plastic_bottle_black",
+            "plastic_bottle_coloured_yoghurt",
+            "plastic_other",
+            "plastic_other_black",
+            "pet_bottle_brown_food",
+            "pet_bottle_clear_food",
+            "pet_bottle_clear_food_covered",
+            "pet_bottle_clear_nonfood",
+            "pet_bottle_clear_nonfood_covered",
+            "pet_bottle_coloured_nonfood",
+            "pet_bottle_darkblue_food",
+            "pet_bottle_green_food",
+            "pet_bottle_lightblue_food",
+            "pet_bottle_othercolour_food",
+            "pet_bottle_white_food",
+            "plastic_bottle_natural_yoghurt",
+            "ps_styrofoam"
+        ],
+        "card": [
+            "card_corrugated",
+            "card_greyboard"
+        ],
+        "other": []
+        },
+        "model_taxonomy_list": ["aluminium_aerosol", "aluminium_can", "aluminium_other", "battery", "book", "bottlecap", "card_corrugated", "card_greyboard", "coffeecuplid", "composite_cup_drink", "composite_cup_food", "container_clear", "container_fragment_black", "container_fragment_coloured", "container_fragment_white", "container_lid_black", "container_lid_coloured", "container_lid_white", "container_pot_black", "container_pot_coloured_food", "container_pot_coloured_nonfood", "container_pot_white_circle", "container_pot_white_rectangle", "container_tray_black", "container_tray_coloured_matte", "container_tray_coloured_shiny", "container_tray_white", "container_tub_black", "container_tub_coloured", "container_tub_white_dairyspread", "container_tub_white_other", "fabric", "facemask", "fibre_mixed", "film_black", "film_bottlelabel", "film_bubblewrap", "film_clear", "film_clear_printed", "film_coloured", "film_coloured_printed", "film_filledbag", "film_metallised", "fine", "generalwaste", "glass_bottle_brown", "glass_bottle_clear", "glass_bottle_green", "glass_cullet_brown", "glass_cullet_clear", "glass_cullet_green", "glass_other", "hdpe_bottle_coloured_food", "hdpe_bottle_coloured_nonfood", "hdpe_bottle_natural_food", "hdpe_bottle_natural_nonfood", "magazine", "metal_other", "newspaper_complete", "newspaper_sheet", "paper_glossygraphic_coloured", "paper_kraft_brown", "paper_office_coloured", "paper_office_white", "paper_other", "paper_tissue_blue", "paper_tissue_white", "pet_bottle_brown_food", "pet_bottle_clear_food", "pet_bottle_clear_food_covered", "pet_bottle_clear_nonfood", "pet_bottle_clear_nonfood_covered", "pet_bottle_coloured_nonfood", "pet_bottle_darkblue_food", "pet_bottle_green_food", "pet_bottle_lightblue_food", "pet_bottle_othercolour_food", "pet_bottle_white_food", "plastic_bottle_black", "plastic_bottle_coloured_yoghurt", "plastic_bottle_natural_yoghurt", "plastic_other", "plastic_other_black", "ps_styrofoam", "sanitary", "steel_can", "tetrapak_carton", "weee", "wipe"]
+}
