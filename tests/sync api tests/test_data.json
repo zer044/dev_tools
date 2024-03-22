@@ -1,0 +1,14 @@
+{
+    "CallbackIp": "10.9.0.82",
+    "CallbackIpUdp": "10.9.0.82",
+    "CallbackPort": 3331,
+    "CallbackPortUdp": 3331,
+    "CallbackUrlHeartbeat": "/heartbeat",
+    "CallbackUrlImage": "/image",
+    "CallbackUrlObjects": "/robot/set-items",
+    "FilterExcludeList": ["film_bubblewrap", "composite_cup_drink"],
+    "FilterIncludeList": ["aerosols", "aluminium_cans", "battery"],
+    "FilterStrategy": "Big",
+    "MaterialPriorityList": ["coloured_hdpe_bottles_food", "coloured_hdpe_bottles_nonfood", "coloured_pet_bottle_contaminated"],
+    "MinObjectSize": 0.0002
+}
